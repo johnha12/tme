@@ -1,0 +1,212 @@
+
+dependencies
+- npm init -y
+- index.js file =>
+  #!/usr/bin/env node
+- add property to package.json =>
+  "bin": {
+    "tme": "index.js"
+  }
+  (tme is name of directory, index.js is file want to execute)
+- npm link
+- npm install chalk@4
+- npm i jsdom
+- npm install jsdom@16
+
+notes:
+- install mocha?
+
+test framework requirements
+- now revisit projects and use own tests.
+- recall: rerun code everytime file changes
+- requirements:
+  - node CLI based
+  - test browser based js apps
+  - little set up
+  - able to test whole app, not just widget
+  - must have 'watch mode', don't have to restart over and over
+  - CLI must find and run all files that name includes '.test.js'
+- note: node AND browser based <= later
+
+project setup
+- tme, test me 
+- npm init -y
+- now has package.json
+- technical challenges
+- set up project to run as CLI program
+- index.js file =>
+  #!/usr/bin/env node
+- add property to package.json =>
+  "bin": {
+    "s33": "index.js"
+  }
+- npm link
+- can start up program w/ tme
+
+implementation steps
+- file collection
+- test environment set up
+- test file execution
+- report results
+- want to be able to go into other directories, and run their test files
+- collection
+  - find all ".test.js" recursively
+    want to be able to search all files and folders
+    store reference to files
+    after obtaining all files, execute them one by one (also test execution phasse)
+- runner.js
+  little bit of test environment setup, but most in seperate file
+  find files, store reference => data structure, constructor to store w/ array
+- lots of functions under 1 class
+
+walking through directory structure
+- navigate tree, iterate. BSF or DSF
+
+implementing BSF
+- slight variation
+  add folders to array
+  check files right away if its a ".test.js"
+- const fs = require('fs');
+- use fsPromises.readdir()
+- current version of node needs await to be wrapped in a function.
+  prob no "top level" await right now
+- pass correct path to runner.collectFiles() <= whatever folder we want to run tme
+  process.cwd() <= whenever call tme, will pass curr directory where program was envoked
+
+collecting test files
+- determine if file is file or folder w/ lstat
+- path module
+- careful, returns array of strings:
+  await fs.promises.readdir(filepath);
+- files.push(...childFiles) <= adds each one into array instead of pushing whole array
+- note: need to capture prev directories for filepath to work 
+  so map it and join it to current directory
+  files.push(...childFiles.map(f => path.join(file,f)))
+
+running test files
+- iterate through files and invoke them
+- to execute, require(file.name); <= load up code
+- error => successfully attempted to execute file. <= good, loaded up file
+  function may not be defined, don't have mocha
+- now write logic
+
+quick test harness
+- made a sample file for easier access to test
+
+implementing 'beforeEach' and 'it'
+- want to run forEach and tme program
+  want it to be defined => 
+  runner.js: global.it = () =>{}...
+- define global it, node will know
+  how mocha does it, how we do it
+- want beforeEach too.
+- reset environment each time
+  make beforeEach function and make variable
+    let numbers;
+    beforeEach(() => {
+      numbers = [1, 2, 3];
+    })
+- async runTests() {
+    for (let file of this.testFiles) {
+      const beforeEaches = [];
+      global.beforeEach = (fn) => {
+        beforeEaches.push(fn);
+      };
+      global.it = (desc, fn) => {
+        beforeEaches.forEach(func => func());
+        fn();
+      };
+      require(file.name);
+    }
+  }
+
+add basic reporting
+- if test fail, entire test program crashes
+- wrap in try catch
+- right now err prints out entire trace. too much info, need just a little bit
+  so just console.log(err.message)
+- load up all code => require(file.name) =>
+  possibly another source of error
+  ex. giberish, syntax error in files
+  so wrap in try catch too.
+- for require(file.name) can catch whole err. prob helpful message
+- adding reporting next
+
+adding colors
+- green good, red fail
+- chalk library, in full directory: tme
+- npm install chalk@4
+- maybe just show reletive path instead of full path
+  shortName: file
+- indent equally next
+
+better formatting
+- add tab to each console.log()
+- replace every new line globally w/ new line, tab, tab
+  const message = err.message.replace(/\n/g, "\n\t\t")
+
+ignoring directories
+- node_modules is a huge file and have dependencies
+  don't want to run tests of dependency files
+  how do we exclude directories?
+- make array of forbidden directories
+  else if (stats.isDirectory() && !forbiddenDirs.includes(file))...
+
+running browser-based js
+- complicated: browser based will try to access DOM use browser methods
+- cheat => run library in testing tool that simulate library 
+- jsdom: copy of running browser, reimplementation of code. no browser!
+
+sample web app
+- jsdom <= npmjs.com 
+- make fake browser w/ DOM 
+
+why JSDOM
+- mocha in browser for email validation is challenging
+  createAutoComplete was easy because its different.
+- fromFile() <= virtual browser representation, thing we can poke at
+  to be sure our app is working
+- code that simulate things user doing on webpage
+
+build a render function
+- take path from html and wrap in own function
+- JSDOM uses promises because they chain .then from documentation
+- dangerously, nodejs will have full access on computer, read/delete all files
+- js outside browser
+- only runScripts that i've put together myself/3rd party that i trust
+- goal: call render => access code
+- can render html file immediately
+
+html element assertions
+- npm install jsdom@16
+- const dom = await render('index.html'); =>
+  lots of information and simulate browser objects
+- can now run browser like items in node js
+
+incorrectly passing test
+- before we took error => some good formatting
+- incorrectly marking test is passing
+- async function: some time.
+- runner: call fn(), immediately run next line
+  so need some time => add check/await
+
+another small issue
+- submit valid form
+- trigger form event, manually dispatch event
+- test is good. can't console.log(h1.innerHTML)
+
+script execution delay
+- instance that code finish parsing html
+  test run, check h1 element
+  JSDOM then loads up index.js file and execute it.
+  meaning these happen in parallel, not serires.
+- so we want to wait until after all associate scripts/resources loads up.
+
+implementating a delay
+- about JSDOM to wait until load
+  can write code to wait until JSDOM is loaded.
+- index.html will load first, then index.js 
+- dom.window.document.addEventListener('DOMContentLoaded', ()=> {});
+- test run: will check contents before js been executed.
+- can check after render by wrapping in promise
+
